@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { LandingPage, PageSection, PageTheme, DeviceView, defaultTheme } from '@/types/editor';
+import { LandingPage, PageSection, PageElement, PageTheme, DeviceView, defaultTheme } from '@/types/editor';
 import { v4 as uuidv4 } from 'uuid';
 
 interface EditorState {
@@ -24,7 +24,10 @@ type EditorAction =
   | { type: 'UPDATE_SECTION'; payload: { id: string; updates: Partial<PageSection> } }
   | { type: 'DELETE_SECTION'; payload: string }
   | { type: 'REORDER_SECTIONS'; payload: PageSection[] }
-  | { type: 'DUPLICATE_SECTION'; payload: string };
+  | { type: 'DUPLICATE_SECTION'; payload: string }
+  | { type: 'ADD_ELEMENT'; payload: { sectionId: string; element: PageElement } }
+  | { type: 'UPDATE_ELEMENT'; payload: { sectionId: string; elementId: string; updates: Partial<PageElement> } }
+  | { type: 'DELETE_ELEMENT'; payload: { sectionId: string; elementId: string } };
 
 const initialState: EditorState = {
   pages: [],
@@ -163,6 +166,59 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         },
       };
 
+    case 'ADD_ELEMENT':
+      if (!state.currentPage) return state;
+      return {
+        ...state,
+        currentPage: {
+          ...state.currentPage,
+          sections: state.currentPage.sections.map((section) =>
+            section.id === action.payload.sectionId
+              ? { ...section, elements: [...section.elements, action.payload.element] }
+              : section
+          ),
+          updatedAt: new Date(),
+        },
+      };
+
+    case 'UPDATE_ELEMENT':
+      if (!state.currentPage) return state;
+      return {
+        ...state,
+        currentPage: {
+          ...state.currentPage,
+          sections: state.currentPage.sections.map((section) =>
+            section.id === action.payload.sectionId
+              ? {
+                  ...section,
+                  elements: section.elements.map((el) =>
+                    el.id === action.payload.elementId
+                      ? { ...el, ...action.payload.updates, content: { ...el.content, ...action.payload.updates.content } }
+                      : el
+                  ),
+                }
+              : section
+          ),
+          updatedAt: new Date(),
+        },
+      };
+
+    case 'DELETE_ELEMENT':
+      if (!state.currentPage) return state;
+      return {
+        ...state,
+        currentPage: {
+          ...state.currentPage,
+          sections: state.currentPage.sections.map((section) =>
+            section.id === action.payload.sectionId
+              ? { ...section, elements: section.elements.filter((el) => el.id !== action.payload.elementId) }
+              : section
+          ),
+          updatedAt: new Date(),
+        },
+        selectedElementId: state.selectedElementId === action.payload.elementId ? null : state.selectedElementId,
+      };
+
     default:
       return state;
   }
@@ -174,12 +230,19 @@ interface EditorContextType {
   createPage: (title: string, sections: PageSection[], theme: PageTheme) => void;
   updateTheme: (theme: Partial<PageTheme>) => void;
   selectSection: (id: string | null) => void;
+  selectElement: (id: string | null) => void;
   addSection: (section: PageSection) => void;
+  updateSection: (id: string, updates: Partial<PageSection>) => void;
   deleteSection: (id: string) => void;
   duplicateSection: (id: string) => void;
   reorderSections: (sections: PageSection[]) => void;
+  addElement: (sectionId: string, element: PageElement) => void;
+  updateElement: (sectionId: string, elementId: string, updates: Partial<PageElement>) => void;
+  deleteElement: (sectionId: string, elementId: string) => void;
   setDeviceView: (view: DeviceView) => void;
   togglePreview: (value?: boolean) => void;
+  getSelectedSection: () => PageSection | null;
+  getSelectedElement: () => PageElement | null;
 }
 
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
@@ -199,8 +262,16 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_SELECTED_SECTION', payload: id });
   };
 
+  const selectElement = (id: string | null) => {
+    dispatch({ type: 'SET_SELECTED_ELEMENT', payload: id });
+  };
+
   const addSection = (section: PageSection) => {
     dispatch({ type: 'ADD_SECTION', payload: section });
+  };
+
+  const updateSection = (id: string, updates: Partial<PageSection>) => {
+    dispatch({ type: 'UPDATE_SECTION', payload: { id, updates } });
   };
 
   const deleteSection = (id: string) => {
@@ -215,12 +286,35 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'REORDER_SECTIONS', payload: sections });
   };
 
+  const addElement = (sectionId: string, element: PageElement) => {
+    dispatch({ type: 'ADD_ELEMENT', payload: { sectionId, element } });
+  };
+
+  const updateElement = (sectionId: string, elementId: string, updates: Partial<PageElement>) => {
+    dispatch({ type: 'UPDATE_ELEMENT', payload: { sectionId, elementId, updates } });
+  };
+
+  const deleteElement = (sectionId: string, elementId: string) => {
+    dispatch({ type: 'DELETE_ELEMENT', payload: { sectionId, elementId } });
+  };
+
   const setDeviceView = (view: DeviceView) => {
     dispatch({ type: 'SET_DEVICE_VIEW', payload: view });
   };
 
   const togglePreview = (value?: boolean) => {
     dispatch({ type: 'TOGGLE_PREVIEW', payload: value });
+  };
+
+  const getSelectedSection = (): PageSection | null => {
+    if (!state.currentPage || !state.selectedSectionId) return null;
+    return state.currentPage.sections.find((s) => s.id === state.selectedSectionId) || null;
+  };
+
+  const getSelectedElement = (): PageElement | null => {
+    const section = getSelectedSection();
+    if (!section || !state.selectedElementId) return null;
+    return section.elements.find((e) => e.id === state.selectedElementId) || null;
   };
 
   return (
@@ -231,12 +325,19 @@ export function EditorProvider({ children }: { children: ReactNode }) {
         createPage,
         updateTheme,
         selectSection,
+        selectElement,
         addSection,
+        updateSection,
         deleteSection,
         duplicateSection,
         reorderSections,
+        addElement,
+        updateElement,
+        deleteElement,
         setDeviceView,
         togglePreview,
+        getSelectedSection,
+        getSelectedElement,
       }}
     >
       {children}

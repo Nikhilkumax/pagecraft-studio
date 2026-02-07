@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { useEditor } from '@/context/EditorContext';
 import { EditorHeader } from '@/components/editor/EditorHeader';
 import { EditorSidebar } from '@/components/editor/EditorSidebar';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
+import { PropertiesPanel } from '@/components/editor/PropertiesPanel';
 import { Navigate } from 'react-router-dom';
 
 export default function Editor() {
@@ -24,6 +24,7 @@ export default function Editor() {
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
         />
         <EditorCanvas />
+        {!state.isPreviewMode && <PropertiesPanel />}
       </div>
     </div>
   );
